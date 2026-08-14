@@ -1,0 +1,24 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Runtime data
+data/*.db
+data/*.db-wal
+data/*.db-shm
+
+# User-supplied audio (never redistribute someone else's tracks)
+data/audio/**/*.wav
+data/audio/**/*.mp3
+data/audio/**/*.ogg
+data/audio/**/*.flac
+data/audio/**/*.m4a
+
+# Build output
+dist/
+build/pyi/
+build/*.png
+build/*.ico
+*.spec.bak
