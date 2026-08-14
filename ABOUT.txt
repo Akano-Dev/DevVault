@@ -1,0 +1,80 @@
+========================================================
+                      QUESTPANEL
+       A Minecraft-inspired quest tracker for real life
+========================================================
+
+
+WHAT IS THIS
+------------
+QuestPanel is a small Windows desktop widget that turns your
+to-do list into a Minecraft-style quest panel. It floats on top
+of whatever you are doing, so your tasks always stay in sight.
+
+
+WHAT IT DOES
+------------
+You write your tasks as quests, organised as Objective > Section
+> Task, and tick them off as you go. It tracks your progress,
+plays a retro sound on each tick, and celebrates when you finish
+an objective.
+
+
+WHAT TECH IT USES
+-----------------
+Python 3.11 with PySide6 (Qt) for the interface, and SQLite to
+save everything on your machine. It runs fully offline with no
+website, browser, or internet connection involved.
+
+
+IS THERE ANY CONCRETE OUTCOME
+-----------------------------
+Yes, it is a finished, working Windows app: run QuestPanel.bat,
+or the standalone QuestPanel.exe that needs no Python installed.
+It has 49 automated tests and all your data is saved instantly.
+
+
+WHAT ARE THE BENEFITS
+---------------------
+It makes boring tasks feel like a game, so you are more likely
+to actually do them. Because it sits on top of your screen
+instead of in a browser tab, you never forget what you were
+supposed to be working on.
+
+
+========================================================
+                      KEY FEATURES
+========================================================
+
+  - Frameless always-on-top overlay you can drag and resize
+  - Global hotkey (Ctrl+Shift+Q) to show or hide it instantly
+  - System tray icon so it stays out of the way
+  - Full add / edit / delete / reorder for every quest
+  - Task priorities and pixel-art item icons
+  - Progress bar and quest-completion animation
+  - Six original chiptune sound effects, plus your own music
+  - Falling cherry-blossom petal effect (can be turned off)
+  - Adjustable size, scale, opacity and compact mode
+  - Everything saved automatically, remembers where you left it
+
+
+========================================================
+                      HOW TO RUN IT
+========================================================
+
+  Easiest    : double-click QuestPanel.bat
+  No Python  : run dist\QuestPanel\QuestPanel.exe
+  Developer  : pip install -r requirements.txt
+               python main.py
+
+  Full documentation is in README.md
+
+
+========================================================
+                    A NOTE ON ASSETS
+========================================================
+
+No Minecraft files are used or included. Every icon, border
+and checkbox is drawn from code, the fonts are open-licensed
+(SIL OFL 1.1), and the sound effects were generated from
+scratch by tools/make_sfx.py. The look is inspired by
+Minecraft; none of the assets are taken from it.
