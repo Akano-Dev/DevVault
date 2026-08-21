@@ -28,6 +28,9 @@ SFX_NAMES = {
     "task_delete": ("task_delete", "task-delete", "delete"),
     "objective_complete": ("objective_complete", "objective-complete", "quest_complete"),
     "ui_click": ("ui_click", "ui-click", "click"),
+    "timer_start": ("timer_start", "timer-start"),
+    "timer_pause": ("timer_pause", "timer-pause"),
+    "timer_done": ("timer_done", "timer-done", "timer"),
 }
 SFX_EXTS = (".wav",)
 MUSIC_EXTS = (".ogg", ".mp3", ".wav", ".flac", ".m4a")

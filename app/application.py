@@ -175,6 +175,8 @@ class QuestPanelApp(QObject):
         self._quitting = True
         self.qapp.setProperty("quitting", True)
         self.overlay.save_geometry()
+        # Bank any running task clock while the database is still open.
+        self.panel.timers.shutdown()
         self.hotkey.unregister()
         self.audio.shutdown()
         if self.settings_window is not None:

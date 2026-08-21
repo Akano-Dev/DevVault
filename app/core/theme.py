@@ -114,6 +114,13 @@ class M:
     ICON_GAP = 7
     CHECK_MARGIN = 5         # gap between the checkbox column and the card edge
 
+    # Task timer chip. The digits are set in the LABEL face: the body face
+    # garbles numerals this small (a 5 comes out looking like an 8).
+    TIMER_SIZE = 9
+    TIMER_SIZE_COMPACT = 8
+    TIMER_ICON = 7           # the little clock face in the chip
+    TIMER_MIN_TEXT = 30      # below this much text room the chip is dropped
+
     GAP_SMALL = 3
     GAP = 6
     GAP_LARGE = 10

@@ -17,6 +17,7 @@ from ..core.theme import C, M, font, px
 from ..database.repo import Repo
 from ..models.entities import Objective, Section, Task
 from ..services.settings import SettingsStore
+from ..services.timers import TimerService
 from ..utils.dragging import try_start_drag
 from .add_row import AddRow
 from .celebration import CelebrationOverlay
@@ -54,6 +55,7 @@ class QuestPanelView(QWidget):
     task_edit_requested = Signal(int)
     task_add_requested = Signal(int)          # section id
     task_menu_requested = Signal(int, QPoint)
+    task_timer_toggled = Signal(int)          # task id -- start/pause its clock
     section_menu_requested = Signal(int, QPoint)
     section_edit_requested = Signal(int)
     section_add_requested = Signal()
@@ -78,6 +80,12 @@ class QuestPanelView(QWidget):
         self._task_rows: dict[int, TaskRow] = {}
         self._section_headers: dict[int, SectionHeader] = {}
         self._was_complete = False
+
+        # The clocks outlive any individual row: rebuilding the list must not
+        # stop a timer that is running.
+        self.timers = TimerService(repo, self)
+        self.timers.tick.connect(self._on_timer_tick)
+        self.timers.state_changed.connect(self._on_timer_state)
 
         self.setMouseTracking(True)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -230,6 +238,13 @@ class QuestPanelView(QWidget):
             row.toggled.connect(self.task_toggled.emit)
             row.edit_requested.connect(self.task_edit_requested.emit)
             row.menu_requested.connect(self.task_menu_requested.emit)
+            row.timer_toggled.connect(self.task_timer_toggled.emit)
+            # A rebuilt row starts blank; hand it back whatever its clock is
+            # actually at right now.
+            row.set_timer_state(
+                self.timers.elapsed(task.id, task.timer_elapsed),
+                self.timers.is_running(task.id),
+            )
             self._task_rows[task.id] = row
             self.body_layout.insertWidget(insert_at, row)
             if animate:
@@ -291,6 +306,33 @@ class QuestPanelView(QWidget):
         if complete and not self._was_complete:
             self.objective_completed.emit(self.objective.id)
         self._was_complete = complete
+
+    # ------------------------------------------------------------------
+    # Timers
+    # ------------------------------------------------------------------
+    def _on_timer_tick(self, task_id: int, elapsed: int) -> None:
+        row = self._task_rows.get(task_id)
+        if row is not None:
+            row.set_timer_state(elapsed, self.timers.is_running(task_id))
+        task = self._find_task(task_id)
+        if task is not None:
+            task.timer_elapsed = elapsed
+
+    def _on_timer_state(self, task_id: int, running: bool) -> None:
+        row = self._task_rows.get(task_id)
+        if row is not None:
+            row.set_timer_state(
+                self.timers.elapsed(task_id, row.task.timer_elapsed), running
+            )
+
+    def _find_task(self, task_id: int) -> Task | None:
+        if self.objective is None:
+            return None
+        for section in self.objective.sections:
+            for task in section.tasks:
+                if task.id == task_id:
+                    return task
+        return None
 
     def update_progress(self, animate: bool = True) -> None:
         value = self.objective.progress if self.objective else 0.0

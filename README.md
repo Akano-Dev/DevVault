@@ -41,6 +41,14 @@ fully offline.
 - Segmented pixel progress meter, per-section counts, quest-completion flourish
 - Every change is written to SQLite immediately — nothing is held in memory only
 
+**Task timers** — entirely optional, per task
+- Any task can carry a clock; tasks without one look and behave exactly as before
+- Give it a goal (`21h`, `90m`, `1h 30m`, `2:30`) or leave it blank for a plain stopwatch
+- The read-out is an inset item slot with a Minecraft-style durability bar for progress
+- Click the chip to start or pause; the digits blink on the separator while it runs
+- Only one clock runs at a time, so a stretch of work is never counted twice
+- Time is banked to SQLite as it accrues, and ticking a task off stops its clock
+
 **Settings** — startup with Windows, always-on-top, remember position/size, hotkey
 capture, UI scale, opacity, icons, progress, compact mode, and the full audio mixer.
 
@@ -113,7 +121,8 @@ discovering the right-click menu first.
 | **+** on the header card | Add a task to the last section |
 | **+ Add task** row | Add a task to that section |
 | Click a task | Toggle complete |
-| Double-click a task | Edit text, priority, icon |
+| Click a task's timer chip | Start / pause that task's clock |
+| Double-click a task | Edit text, priority, icon, timer |
 | Double-click the objective title | Edit objective |
 | Click a section header | Collapse / expand |
 | Right-click a task / section / panel | Context menu for that level |
@@ -121,6 +130,7 @@ discovering the right-click menu first.
 | Drag any edge or corner | Resize |
 | `Space` / `Enter` on a focused row | Toggle complete |
 | `F2` on a focused row | Edit task |
+| `T` on a focused row | Start / pause its timer |
 | `Esc` | Hide the overlay |
 | Double-click the tray icon | Show / hide |
 
@@ -156,7 +166,7 @@ If `assets/fonts/` is empty the app falls back to Consolas and still runs.
 
 ### Audio and music
 
-Six original chiptune sound effects ship with QuestPanel (see below). **No music
+Nine original chiptune sound effects ship with QuestPanel (see below). **No music
 ships** — and no Mojang audio is bundled or redistributed. Your own files go in a
 writable folder that survives app updates and rebuilds:
 
@@ -177,7 +187,10 @@ The folder is created on first launch. The quickest way to find it is
 ├── task_uncomplete.wav
 ├── task_delete.wav
 ├── objective_complete.wav
-└── ui_click.wav
+├── ui_click.wav
+├── timer_start.wav
+├── timer_pause.wav
+└── timer_done.wav
 ```
 
 **To get music playing:** drop a file into `music/`, open Settings → Audio,
@@ -188,13 +201,13 @@ Volume`, so check both if it stays silent.
 Sound effects must be `.wav` — Qt's `QSoundEffect` only decodes WAV. Music can
 be any format the platform media backend supports; mp3 and ogg both work.
 
-**Six chiptune effects ship with QuestPanel** — task add, complete, uncomplete,
-delete, objective complete, and a UI click. They are synthesised from scratch by
+**Nine chiptune effects ship with QuestPanel** — task add, complete, uncomplete,
+delete, objective complete, a UI click, and timer start / pause / target-reached. They are synthesised from scratch by
 `tools/make_sfx.py` (pulse waves, hard envelopes, short arpeggios) so they are
 original work with no licensing strings attached. Rerun that script to retune
 them; drop a file with the same name in your audio folder to replace one.
 
-All six are under 620ms and mono 44.1kHz, so `QSoundEffect` keeps them decoded
+All nine are under 650ms and mono 44.1kHz, so `QSoundEffect` keeps them decoded
 in memory — measured `play()` latency is under 1ms.
 
 **Output device:** audio follows whatever Windows is currently using. Plug in
@@ -231,7 +244,7 @@ To distribute, zip the whole `dist/QuestPanel/` folder.
 ## Development
 
 ```bash
-python -m pytest tests -q     # 49 unit + widget tests
+python -m pytest tests -q     # 85 unit + widget tests
 python tests/preview.py       # render every surface to build/preview-*.png
 python tests/smoke_run.py     # boot the real app, verify tray/hotkey/geometry
 ```
@@ -258,8 +271,10 @@ app/
 │   ├── db.py            connection, schema, WAL
 │   └── repo.py          CRUD + dense reordering + first-launch seed
 ├── models/entities.py   Objective / Section / Task dataclasses
+├── utils/duration.py    parse "21h"/"1h 30m"/"2:30"; format the clock read-out
 ├── services/
 │   ├── settings.py      typed key/value store, write-through to SQLite
+│   ├── timers.py        one shared 1s tick driving the per-task clocks
 │   ├── audio.py         optional Qt Multimedia wrapper, fails soft
 │   └── startup.py       HKCU Run key (no elevation)
 ├── ui/
@@ -319,6 +334,13 @@ The layout follows the reference image measurement-for-measurement:
 - **Icons are colour, drawn from code.** Each 8x8 glyph has its own three-tone
   palette in `icons.PALETTES`, so rows show coloured items like the reference
   without shipping a single sprite file.
+- **The timer chip is an item slot, not a badge.** It reuses
+  `painting.draw_inset_box` and fills the bottom two pixels with a segmented
+  durability bar, so a task's progress toward its goal reads the way tool wear
+  does in-game. The digits are the *only* thing in the panel set in Silkscreen
+  rather than the body face and the only text with no drop shadow: at nine
+  pixels the body face garbles numerals (a `5` comes out as an `8`) and the
+  shadow doubles every stroke.
 
 Engineering notes:
 
@@ -332,7 +354,15 @@ Engineering notes:
 - **No anti-aliasing except on card corners.** `painting.crisp()` disables
   smoothing so checkboxes and glyphs stay on the pixel grid at every DPI.
 - **No polling anywhere.** The hotkey is delivered as `WM_HOTKEY`; geometry saves
-  are debounced through a single-shot timer. Idle CPU is zero.
+  are debounced through a single-shot timer. Idle CPU is zero. A running task
+  clock is the one exception, and it is a single shared 1s `QTimer` for the whole
+  panel rather than one per row.
+- **Elapsed time is measured, not counted.** `services/timers.py` diffs
+  `time.monotonic()` instead of adding a second per tick, so a stalled event loop
+  cannot lose time. It banks the total to SQLite every 15s and on every
+  pause/quit, and it deliberately does **not** persist the *running* flag: a
+  timer left running when the app closes comes back paused, because restoring it
+  as running would silently bill every offline hour to the task.
 
 ---
 

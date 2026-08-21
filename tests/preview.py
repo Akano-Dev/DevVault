@@ -20,7 +20,7 @@ from app.core import theme  # noqa: E402
 from app.database.db import Database  # noqa: E402
 from app.database.repo import Repo  # noqa: E402
 from app.services.settings import SettingsStore  # noqa: E402
-from app.ui.dialogs import TaskDialog  # noqa: E402
+from app.ui.dialogs import TaskDialog, TimerDialog  # noqa: E402
 from app.ui.overlay import OverlayWindow  # noqa: E402
 from app.ui.settings_window import SettingsWindow  # noqa: E402
 from app.widgets.quest_panel import QuestPanelView  # noqa: E402
@@ -38,6 +38,18 @@ def build_data(db: Database) -> Repo:
     repo.create_task(study, "Solve graph problems", 3, "star")
     coding = repo.create_section(obj.id, "Coding")
     repo.create_task(coding, "Build dashboard", 2, "gear")
+
+    # Timer rows: a long goal part-way through, a short one already met, and
+    # a goal-less stopwatch.
+    target = repo.create_section(obj.id, "Target")
+    long_run = repo.create_task(target, "Coding (Learning)", 1, "book",
+                                timer_enabled=True, timer_target=21 * 3600)
+    repo.set_task_elapsed(long_run, 7 * 3600 + 26 * 60)
+    met = repo.create_task(target, "Exercise", 2, "sword",
+                           timer_enabled=True, timer_target=45 * 60)
+    repo.set_task_elapsed(met, 47 * 60)
+    stopwatch = repo.create_task(target, "Editing", 0, "star", timer_enabled=True)
+    repo.set_task_elapsed(stopwatch, 95)
     return repo
 
 
@@ -79,13 +91,22 @@ def main() -> int:
     settings = SettingsStore(db)
     settings.set("win_x", 200)
     settings.set("win_y", 120)
+    # Rows fade and slide in on a stagger; a single processEvents() grabs them
+    # mid-entrance, i.e. invisible. Stills want the settled state.
+    settings.set("animations_enabled", False)
 
     # 1. Default overlay -------------------------------------------------
     overlay = OverlayWindow(settings)
     panel = QuestPanelView(repo, settings)
     overlay.set_content(panel)
-    overlay.resize(380, 195)
+    overlay.resize(380, 470)
     panel.reload()
+    # One clock left running, so the preview shows both timer states.
+    running = next(
+        t for s in panel.objective.sections for t in s.tasks
+        if t.timer_enabled and t.timer_target and not t.timer_reached
+    )
+    panel.timers.start(running.id, running.timer_elapsed, running.timer_target)
     overlay.show()
     app.processEvents()
     shot(overlay, "overlay-default")
@@ -112,19 +133,29 @@ def main() -> int:
         win.close()
 
         # 5. Task dialog --------------------------------------------------
-        dialog = TaskDialog("Edit Task", "Solve graph problems", 3, "star")
+        dialog = TaskDialog("Edit Task", "Solve graph problems", 3, "star",
+                            True, 21 * 3600)
         dialog.adjustSize()
         dialog.show()
         app.processEvents()
         shot(dialog, "dialog-task", backdrop=False)
         dialog.close()
 
+        # 5b. Timer dialog -------------------------------------------------
+        timer_dialog = TimerDialog("Coding (Learning)", True, 21 * 3600,
+                                   7 * 3600 + 26 * 60)
+        timer_dialog.adjustSize()
+        timer_dialog.show()
+        app.processEvents()
+        shot(timer_dialog, "dialog-timer", backdrop=False)
+        timer_dialog.close()
+
         # 6. 150% UI scale -- rendered inside a real overlay, as shipped ---
         theme.set_scale(1.5)
         scaled = OverlayWindow(settings)
         scaled_panel = QuestPanelView(repo, settings)
         scaled.set_content(scaled_panel)
-        scaled.resize(570, 292)
+        scaled.resize(570, 700)
         scaled_panel.reload()
         scaled.show()
         app.processEvents()

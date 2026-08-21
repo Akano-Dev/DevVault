@@ -16,7 +16,8 @@ WHAT IT DOES
 You write your tasks as quests, organised as Objective > Section
 > Task, and tick them off as you go. It tracks your progress,
 plays a retro sound on each tick, and celebrates when you finish
-an objective.
+an objective. Any task can also carry an optional timer, so you
+can track the hours you actually spend on something.
 
 
 WHAT TECH IT USES
@@ -30,7 +31,7 @@ IS THERE ANY CONCRETE OUTCOME
 -----------------------------
 Yes, it is a finished, working Windows app: run QuestPanel.bat,
 or the standalone QuestPanel.exe that needs no Python installed.
-It has 49 automated tests and all your data is saved instantly.
+It has 85 automated tests and all your data is saved instantly.
 
 
 WHAT ARE THE BENEFITS
@@ -50,8 +51,10 @@ supposed to be working on.
   - System tray icon so it stays out of the way
   - Full add / edit / delete / reorder for every quest
   - Task priorities and pixel-art item icons
+  - Optional per-task timer with a Minecraft-style durability bar,
+    set a goal like 21h or just let it count up
   - Progress bar and quest-completion animation
-  - Six original chiptune sound effects, plus your own music
+  - Nine original chiptune sound effects, plus your own music
   - Falling cherry-blossom petal effect (can be turned off)
   - Adjustable size, scale, opacity and compact mode
   - Everything saved automatically, remembers where you left it

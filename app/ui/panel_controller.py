@@ -12,9 +12,10 @@ from ..core.theme import M, PRIORITY_NAMES, font
 from ..database.repo import Repo
 from ..models.entities import Section, Task
 from ..services.settings import SettingsStore
+from ..utils.duration import format_compact
 from ..widgets.pixel_controls import MENU_STYLE
 from ..widgets.quest_panel import QuestPanelView
-from .dialogs import TaskDialog, TextDialog, confirm
+from .dialogs import TaskDialog, TextDialog, TimerDialog, confirm
 
 
 class PanelController(QObject):
@@ -38,7 +39,10 @@ class PanelController(QObject):
         self.panel = panel
         self.repo = repo
         self.settings = settings
+        self.timers = panel.timers
+        self.timers.target_reached.connect(self._on_target_reached)
 
+        panel.task_timer_toggled.connect(self.toggle_timer)
         panel.task_toggled.connect(self.toggle_task)
         panel.task_edit_requested.connect(self.edit_task)
         panel.task_add_requested.connect(self.add_task)
@@ -81,23 +85,80 @@ class PanelController(QObject):
     # ------------------------------------------------------------------
     def toggle_task(self, task_id: int) -> None:
         done = self.repo.toggle_task(task_id)
+        # Finishing a task stops its clock: leaving it running would keep
+        # billing time to work the user has just declared finished.
+        if done and self.timers.is_running(task_id):
+            self.timers.pause(task_id)
         self.panel.apply_task_state(task_id, done)
         self.task_completed.emit(done)
+
+    # ------------------------------------------------------------------
+    # Timers
+    # ------------------------------------------------------------------
+    def toggle_timer(self, task_id: int) -> None:
+        task = self._find_task(task_id)
+        if task is None:
+            return
+        if not task.timer_enabled:
+            self.configure_timer(task_id)
+            return
+        running = self.timers.toggle(task_id, task.timer_elapsed, task.timer_target)
+        self.sound_requested.emit("timer_start" if running else "timer_pause")
+
+    def configure_timer(self, task_id: int) -> None:
+        """Add, retarget or remove the timer on an existing task."""
+        task = self._find_task(task_id)
+        if task is None:
+            return
+        dialog = TimerDialog(
+            task.text, task.timer_enabled, task.timer_target, task.timer_elapsed,
+            self._dialog_parent(),
+        )
+        dialog.adjustSize()
+        dialog.center_on(self._dialog_parent())
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        enabled, target = dialog.values()
+        if not enabled and self.timers.is_running(task_id):
+            self.timers.pause(task_id)
+        self.repo.set_task_timer(task_id, enabled, target)
+        if dialog.reset_requested():
+            self.timers.reset(task_id)
+        self.panel.reload()
+
+    def reset_timer(self, task_id: int) -> None:
+        task = self._find_task(task_id)
+        if task is None:
+            return
+        if task.timer_elapsed and not confirm(
+            self._dialog_parent(), "Reset Timer",
+            f'Clear the {format_compact(task.timer_elapsed)} tracked on "{task.text}"?',
+            ok_text="Reset",
+        ):
+            return
+        self.timers.reset(task_id)
+        self.panel.reload()
+
+    def _on_target_reached(self, task_id: int) -> None:
+        self.sound_requested.emit("timer_done")
 
     def edit_task(self, task_id: int) -> None:
         task = self._find_task(task_id)
         if task is None:
             return
         dialog = TaskDialog("Edit Task", task.text, task.priority, task.icon,
+                            task.timer_enabled, task.timer_target,
                             self._dialog_parent())
         dialog.adjustSize()
         dialog.center_on(self._dialog_parent())
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
-        text, priority, icon = dialog.values()
+        text, priority, icon, timer_enabled, timer_target = dialog.values()
         if not text:
             return
-        self.repo.update_task(task_id, text, priority, icon)
+        if not timer_enabled and self.timers.is_running(task_id):
+            self.timers.pause(task_id)
+        self.repo.update_task(task_id, text, priority, icon, timer_enabled, timer_target)
         self.panel.reload()
 
     def add_task(self, section_id: int) -> None:
@@ -106,10 +167,10 @@ class PanelController(QObject):
         dialog.center_on(self._dialog_parent())
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
-        text, priority, icon = dialog.values()
+        text, priority, icon, timer_enabled, timer_target = dialog.values()
         if not text:
             return
-        self.repo.create_task(section_id, text, priority, icon)
+        self.repo.create_task(section_id, text, priority, icon, timer_enabled, timer_target)
         self.sound_requested.emit("task_add")
         self.panel.reload()
 
@@ -119,6 +180,9 @@ class PanelController(QObject):
             return
         if not confirm(self._dialog_parent(), "Delete Task", f'Delete "{task.text}"?'):
             return
+        # Drop the clock first: a pending flush would otherwise write an
+        # elapsed total back to a row that no longer exists.
+        self.timers.forget(task_id)
         self.repo.delete_task(task_id)
         self.sound_requested.emit("task_delete")
         self.panel.reload()
@@ -238,6 +302,25 @@ class PanelController(QObject):
         )
         menu.addAction("Edit Task\tF2", lambda: self.edit_task(task_id))
 
+        menu.addSeparator()
+        if task.timer_enabled:
+            running = self.timers.is_running(task_id)
+            menu.addAction(
+                "Pause Timer\tT" if running else "Start Timer\tT",
+                lambda: self.toggle_timer(task_id),
+            )
+            elapsed = self.timers.elapsed(task_id, task.timer_elapsed)
+            spent = menu.addAction(
+                f"Tracked: {format_compact(elapsed)}"
+                + (f" / {format_compact(task.timer_target)}" if task.timer_target else "")
+            )
+            spent.setEnabled(False)
+            menu.addAction("Reset Timer", lambda: self.reset_timer(task_id))
+            menu.addAction("Timer Settings", lambda: self.configure_timer(task_id))
+        else:
+            menu.addAction("Add Timer", lambda: self.configure_timer(task_id))
+
+        menu.addSeparator()
         priority_menu = menu.addMenu("Priority")
         for value, name in PRIORITY_NAMES.items():
             action = priority_menu.addAction(name)

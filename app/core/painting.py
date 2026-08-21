@@ -145,6 +145,65 @@ def draw_inset_box(p: QPainter, rect: QRect, body: QColor, t: int | None = None)
     return inner
 
 
+TIMER_CHIP_FRAME = 2       # design px of outline + bevel on each edge
+TIMER_CHIP_BAR = 3         # design px the durability bar and its gap need
+
+
+def draw_timer_chip(
+    p: QPainter,
+    rect: QRect,
+    progress: float,
+    running: bool,
+    reached: bool = False,
+    hover: bool = False,
+    show_bar: bool = True,
+) -> QRect:
+    """The task timer read-out: an inset slot with a durability bar.
+
+    Built from the same pieces as the rest of the panel -- a recessed box and
+    a segmented meter -- so it reads as an item slot rather than a web badge.
+    Returns the rect the caller should draw the clock and digits into.
+
+    ``show_bar`` is off when the row is too short to give the meter its own
+    pixels; the digits then carry the state on their own.
+    """
+    body = C.BOX_FILL.lighter(140) if hover else C.BOX_FILL
+    inner = draw_inset_box(p, rect, body, px(1))
+
+    if not show_bar:
+        return QRect(
+            inner.left() + px(2), inner.top(),
+            max(0, inner.width() - px(4)), inner.height(),
+        )
+
+    bar_h = max(1, px(2))
+    bar = QRect(inner.left(), inner.bottom() - bar_h + 1, inner.width(), bar_h)
+    p.fillRect(bar, C.BEVEL_DARK)
+
+    progress = max(0.0, min(1.0, float(progress)))
+    if progress > 0.0:
+        color = C.GREEN if reached else (C.YELLOW if running else C.YELLOW_DIM)
+        cell = max(1, px(2))
+        gap = max(1, px(1))
+        step = cell + gap
+        cells = max(1, (bar.width() + gap) // step)
+        # A started timer always lights at least one cell, so "running but
+        # barely begun" never looks identical to "not started".
+        filled = max(1, int(round(progress * cells)))
+        for i in range(filled):
+            x = bar.left() + i * step
+            if x + cell > bar.right() + 1:
+                break
+            p.fillRect(QRect(x, bar.top(), cell, bar_h), color)
+
+    return QRect(
+        inner.left() + px(2),
+        inner.top(),
+        max(0, inner.width() - px(4)),
+        max(0, inner.height() - bar_h - px(1)),
+    )
+
+
 def draw_pixel_check(p: QPainter, rect: QRect, color: QColor, alpha: float = 1.0) -> None:
     """A blocky check mark built from square cells on a 7x7 grid."""
     if alpha <= 0.0:

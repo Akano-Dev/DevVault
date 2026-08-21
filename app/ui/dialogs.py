@@ -16,7 +16,15 @@ from PySide6.QtWidgets import (
 from ..core import painting
 from ..core.icons import ICON_NAMES, custom_icon_names, glyph_pixmap
 from ..core.theme import C, M, PRIORITY_NAMES, font, label_font, px
-from ..widgets.pixel_controls import PixelButton, style_combo, style_line_edit
+from ..utils.duration import format_compact, parse_duration
+from ..widgets.pixel_controls import (
+    PixelButton,
+    PixelCheckBox,
+    style_combo,
+    style_line_edit,
+)
+
+TIMER_HINT = "e.g. 21h, 90m, 1h 30m, 2:30 -- blank counts up"
 
 
 class PixelDialog(QDialog):
@@ -64,6 +72,64 @@ class PixelDialog(QDialog):
         widget.setFont(font(M.TASK_SIZE))
         self.form.addWidget(widget)
         return widget
+
+    # ------------------------------------------------------------------
+    # Timer fields -- shared by the task editor and the standalone dialog
+    # ------------------------------------------------------------------
+    def add_timer_fields(self, enabled: bool = False, target: int = 0) -> None:
+        self.timer_check = PixelCheckBox("Track time on this task", self)
+        self.timer_check.setFont(font(M.TASK_SIZE))
+        self.timer_check.setChecked(bool(enabled))
+        self.form.addWidget(self.timer_check)
+
+        self.timer_target = style_line_edit(QLineEdit(self))
+        self.timer_target.setPlaceholderText("no goal")
+        if target:
+            self.timer_target.setText(format_compact(target))
+        self.add_field("Target", self.timer_target)
+
+        self.timer_hint = QLabel(TIMER_HINT, self)
+        self.timer_hint.setFont(font(M.SECTION_SIZE))
+        self.timer_hint.setWordWrap(True)
+        self.timer_hint.setStyleSheet(f"color: {C.MUTED.name()}; background: transparent;")
+        self.form.addWidget(self.timer_hint)
+
+        self.timer_check.toggled.connect(self._sync_timer_fields)
+        self._sync_timer_fields(self.timer_check.isChecked())
+
+    def _sync_timer_fields(self, enabled: bool) -> None:
+        # The target only means anything with the timer on, so grey it out
+        # rather than letting the user type into a field that is ignored.
+        self.timer_target.setEnabled(enabled)
+        self.timer_hint.setStyleSheet(
+            f"color: {(C.MUTED if enabled else C.SEPARATOR).name()}; background: transparent;"
+        )
+
+    def timer_values(self) -> tuple[bool, int]:
+        if not hasattr(self, "timer_check"):
+            return False, 0
+        if not self.timer_check.isChecked():
+            return False, 0
+        return True, parse_duration(self.timer_target.text())
+
+    def timer_input_is_valid(self) -> bool:
+        """Typed text that parses to nothing is a mistake, not 'no goal'."""
+        if not hasattr(self, "timer_check") or not self.timer_check.isChecked():
+            return True
+        text = self.timer_target.text().strip()
+        return not text or parse_duration(text) > 0
+
+    def _reject_timer_input(self) -> None:
+        self.timer_hint.setText(f"Could not read that duration. {TIMER_HINT}")
+        self.timer_hint.setStyleSheet(f"color: {C.RED.name()}; background: transparent;")
+        self.timer_target.setFocus()
+        self.timer_target.selectAll()
+
+    def accept(self) -> None:  # noqa: D102
+        if not self.timer_input_is_valid():
+            self._reject_timer_input()
+            return
+        super().accept()
 
     def add_buttons(self, ok_text: str = "Save", danger: bool = False) -> None:
         cancel = PixelButton("Cancel", self)
@@ -147,7 +213,7 @@ class TextDialog(PixelDialog):
 
 
 class TaskDialog(PixelDialog):
-    """Task text plus priority and optional icon."""
+    """Task text plus priority, optional icon and an optional timer."""
 
     def __init__(
         self,
@@ -155,6 +221,8 @@ class TaskDialog(PixelDialog):
         text: str = "",
         priority: int = 0,
         icon: str = "",
+        timer_enabled: bool = False,
+        timer_target: int = 0,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(title, parent)
@@ -182,16 +250,64 @@ class TaskDialog(PixelDialog):
         self.icon.setCurrentIndex(idx if idx >= 0 else 0)
         self.add_field("Icon", self.icon)
 
+        self.add_timer_fields(timer_enabled, timer_target)
+
         self.add_buttons()
         self.setMinimumWidth(px(250))
         self.edit.setFocus()
 
-    def values(self) -> tuple[str, int, str]:
+    def values(self) -> tuple[str, int, str, bool, int]:
+        enabled, target = self.timer_values()
         return (
             self.edit.text().strip(),
             int(self.priority.currentData()),
             str(self.icon.currentData() or ""),
+            enabled,
+            target,
         )
+
+
+class TimerDialog(PixelDialog):
+    """Add, retarget or clear the timer on a task that already exists."""
+
+    def __init__(
+        self,
+        task_text: str,
+        enabled: bool = False,
+        target: int = 0,
+        elapsed: int = 0,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__("Task Timer", parent)
+
+        name = QLabel(task_text, self)
+        name.setWordWrap(True)
+        name.setFont(font(M.TASK_SIZE))
+        name.setStyleSheet(f"color: {C.TITLE.name()}; background: transparent;")
+        self.form.addWidget(name)
+
+        self.add_timer_fields(enabled, target)
+
+        self.reset_check: PixelCheckBox | None = None
+        if elapsed:
+            tracked = QLabel(f"Tracked so far: {format_compact(elapsed)}", self)
+            tracked.setFont(font(M.TASK_SIZE))
+            tracked.setStyleSheet(f"color: {C.YELLOW.name()}; background: transparent;")
+            self.form.addWidget(tracked)
+
+            self.reset_check = PixelCheckBox("Clear tracked time", self)
+            self.reset_check.setFont(font(M.TASK_SIZE))
+            self.form.addWidget(self.reset_check)
+
+        self.add_buttons()
+        self.setMinimumWidth(px(250))
+        self.timer_target.setFocus()
+
+    def values(self) -> tuple[bool, int]:
+        return self.timer_values()
+
+    def reset_requested(self) -> bool:
+        return self.reset_check is not None and self.reset_check.isChecked()
 
 
 class ConfirmDialog(PixelDialog):

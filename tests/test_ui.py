@@ -230,7 +230,7 @@ def test_add_task_click_reaches_the_repository(panel, qapp, monkeypatch):
             return QDialog.DialogCode.Accepted
 
         def values(self):
-            return ("Mine obsidian", 2, "pickaxe")
+            return ("Mine obsidian", 2, "pickaxe", False, 0)
 
     monkeypatch.setattr("app.ui.panel_controller.TaskDialog", FakeDialog)
 

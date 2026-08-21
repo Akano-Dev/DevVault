@@ -7,7 +7,7 @@ from pathlib import Path
 
 from ..core.paths import database_path
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS objectives (
@@ -36,7 +36,10 @@ CREATE TABLE IF NOT EXISTS tasks (
     priority     INTEGER NOT NULL DEFAULT 0,
     icon         TEXT    NOT NULL DEFAULT '',
     position     INTEGER NOT NULL DEFAULT 0,
-    completed_at TEXT
+    completed_at TEXT,
+    timer_enabled INTEGER NOT NULL DEFAULT 0,
+    timer_target  INTEGER NOT NULL DEFAULT 0,
+    timer_elapsed INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_tasks_section ON tasks(section_id, position);
 
@@ -50,6 +53,13 @@ CREATE TABLE IF NOT EXISTS meta (
     value TEXT NOT NULL
 );
 """
+
+# Columns introduced after schema v1, patched into existing databases.
+_ADDED_COLUMNS = (
+    ("tasks", "timer_enabled", "timer_enabled INTEGER NOT NULL DEFAULT 0"),
+    ("tasks", "timer_target", "timer_target INTEGER NOT NULL DEFAULT 0"),
+    ("tasks", "timer_elapsed", "timer_elapsed INTEGER NOT NULL DEFAULT 0"),
+)
 
 
 class Database:
@@ -74,14 +84,25 @@ class Database:
     def _migrate(self) -> None:
         with self._lock:
             self.conn.executescript(_SCHEMA)
-            cur = self.conn.execute("SELECT value FROM meta WHERE key='schema_version'")
-            row = cur.fetchone()
-            if row is None:
-                self.conn.execute(
-                    "INSERT INTO meta(key, value) VALUES('schema_version', ?)",
-                    (str(SCHEMA_VERSION),),
-                )
+            self._add_missing_columns()
+            self.conn.execute(
+                "INSERT INTO meta(key, value) VALUES('schema_version', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (str(SCHEMA_VERSION),),
+            )
             self.conn.commit()
+
+    def _add_missing_columns(self) -> None:
+        """Bring a v1 database up to date in place.
+
+        SQLite has no ``ADD COLUMN IF NOT EXISTS``, and the CREATE TABLE above
+        is skipped entirely for an existing table -- so columns added after v1
+        have to be patched in one by one against the live schema.
+        """
+        for table, column, ddl in _ADDED_COLUMNS:
+            existing = {r["name"] for r in self.conn.execute(f"PRAGMA table_info({table})")}
+            if column not in existing:
+                self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {ddl}")
 
     # -- helpers ---------------------------------------------------------
     def execute(self, sql: str, params: tuple = ()) -> sqlite3.Cursor:

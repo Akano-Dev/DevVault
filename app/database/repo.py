@@ -121,17 +121,31 @@ class Repo:
     # Tasks
     # ------------------------------------------------------------------
     def create_task(
-        self, section_id: int, text: str, priority: int = 0, icon: str = ""
+        self,
+        section_id: int,
+        text: str,
+        priority: int = 0,
+        icon: str = "",
+        timer_enabled: bool = False,
+        timer_target: int = 0,
     ) -> int:
         pos = self._next_position("tasks", "section_id", section_id)
         cur = self.db.execute(
-            "INSERT INTO tasks(section_id, text, priority, icon, position) VALUES(?, ?, ?, ?, ?)",
-            (section_id, text.strip() or "New Task", int(priority), icon, pos),
+            "INSERT INTO tasks(section_id, text, priority, icon, position, "
+            "timer_enabled, timer_target) VALUES(?, ?, ?, ?, ?, ?, ?)",
+            (section_id, text.strip() or "New Task", int(priority), icon, pos,
+             1 if timer_enabled else 0, max(0, int(timer_target))),
         )
         return int(cur.lastrowid)
 
     def update_task(
-        self, task_id: int, text: str, priority: int | None = None, icon: str | None = None
+        self,
+        task_id: int,
+        text: str,
+        priority: int | None = None,
+        icon: str | None = None,
+        timer_enabled: bool | None = None,
+        timer_target: int | None = None,
     ) -> None:
         sets = ["text=?"]
         params: list = [text.strip() or "New Task"]
@@ -141,8 +155,35 @@ class Repo:
         if icon is not None:
             sets.append("icon=?")
             params.append(icon)
+        if timer_enabled is not None:
+            sets.append("timer_enabled=?")
+            params.append(1 if timer_enabled else 0)
+        if timer_target is not None:
+            sets.append("timer_target=?")
+            params.append(max(0, int(timer_target)))
         params.append(task_id)
         self.db.execute(f"UPDATE tasks SET {', '.join(sets)} WHERE id=?", tuple(params))
+
+    # -- timers ---------------------------------------------------------
+    def set_task_timer(self, task_id: int, enabled: bool, target: int = 0) -> None:
+        """Turn the timer on/off for one task without touching its text."""
+        self.db.execute(
+            "UPDATE tasks SET timer_enabled=?, timer_target=? WHERE id=?",
+            (1 if enabled else 0, max(0, int(target)), task_id),
+        )
+
+    def set_task_elapsed(self, task_id: int, seconds: int) -> None:
+        """Bank the running total. Called on pause and on periodic flushes."""
+        self.db.execute(
+            "UPDATE tasks SET timer_elapsed=? WHERE id=?", (max(0, int(seconds)), task_id)
+        )
+
+    def reset_task_timer(self, task_id: int) -> None:
+        self.db.execute("UPDATE tasks SET timer_elapsed=0 WHERE id=?", (task_id,))
+
+    def task_elapsed(self, task_id: int) -> int:
+        row = self.db.query_one("SELECT timer_elapsed FROM tasks WHERE id=?", (task_id,))
+        return int(row["timer_elapsed"]) if row else 0
 
     def set_task_done(self, task_id: int, done: bool) -> None:
         self.db.execute(
@@ -275,6 +316,9 @@ class Repo:
                 icon=r["icon"],
                 position=int(r["position"]),
                 completed_at=r["completed_at"],
+                timer_enabled=bool(r["timer_enabled"]),
+                timer_target=int(r["timer_target"]),
+                timer_elapsed=int(r["timer_elapsed"]),
             )
             for r in rows
         ]

@@ -200,6 +200,32 @@ def ui_click() -> list[float]:
     ])
 
 
+def timer_start() -> list[float]:
+    """Two-note 'clock winding up'. Quieter than task_add -- it is not news."""
+    return sequence([
+        (0.000, tone(NOTES["G4"], 0.045, duty=0.5, volume=0.45)),
+        (0.040, tone(NOTES["D5"], 0.080, duty=0.25, volume=0.55)),
+    ])
+
+
+def timer_pause() -> list[float]:
+    """The same pair falling, so start and pause are told apart by ear."""
+    return sequence([
+        (0.000, tone(NOTES["D5"], 0.045, duty=0.25, volume=0.45)),
+        (0.040, tone(NOTES["G4"], 0.090, duty=0.5, volume=0.50, bend=-1.0)),
+    ])
+
+
+def timer_done() -> list[float]:
+    """Target reached: an alarm-ish double chime with a triangle body."""
+    parts: list[tuple[float, list[float]]] = []
+    for at in (0.000, 0.190):
+        parts.append((at, tone(NOTES["E6"], 0.150, duty=0.125, volume=0.70)))
+        parts.append((at, tone(NOTES["A5"], 0.160, shape="triangle", volume=0.45)))
+    parts.append((0.380, tone(NOTES["A5"], 0.260, duty=0.25, volume=0.40, vibrato=0.012)))
+    return sequence(parts)
+
+
 EFFECTS = {
     "task_complete.wav": task_complete,
     "task_uncomplete.wav": task_uncomplete,
@@ -207,6 +233,9 @@ EFFECTS = {
     "task_delete.wav": task_delete,
     "objective_complete.wav": objective_complete,
     "ui_click.wav": ui_click,
+    "timer_start.wav": timer_start,
+    "timer_pause.wav": timer_pause,
+    "timer_done.wav": timer_done,
 }
 
 
