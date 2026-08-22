@@ -28,6 +28,22 @@ def main() -> int:
     tmp = Path(tempfile.mkdtemp(prefix="questpanel-smoke-"))
     paths.database_path = lambda: tmp / "smoke.db"  # type: ignore[assignment]
 
+    # This harness boots the real app, which creates sections, ticks tasks and
+    # saves window geometry. All of that has to land in the throwaway database
+    # above -- so prove the redirect actually took before anything opens it.
+    # (It silently did not once: db.py had imported the name directly, so this
+    # patch was ignored and the run edited the user's live to-do list.)
+    from app.database.db import Database
+
+    probe = Database()
+    resolved = probe.path
+    probe.close()
+    if resolved != tmp / "smoke.db":
+        raise SystemExit(
+            f"refusing to run: the app would open {resolved}, not the temp database.\n"
+            "Something rebound paths.database_path -- fix that before running this."
+        )
+
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
     ctrl = QuestPanelApp(app)

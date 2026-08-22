@@ -5,6 +5,8 @@ class owns every CRUD interaction and context menu the panel offers.
 """
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from PySide6.QtCore import QObject, QPoint, Signal
 from PySide6.QtWidgets import QDialog, QMenu
 
@@ -187,6 +189,17 @@ class PanelController(QObject):
         self.sound_requested.emit("task_delete")
         self.panel.reload()
 
+    def _forget_timers_for(self, tasks: Iterable[Task]) -> None:
+        """Drop the clocks on rows that are about to be deleted.
+
+        A running timer banks its total on a 15s cycle. If the row is gone by
+        then the write lands on nothing and the clock keeps ticking against a
+        task that no longer exists, so it has to be dropped up front -- the
+        same reason :meth:`delete_task` calls ``forget`` before deleting.
+        """
+        for task in tasks:
+            self.timers.forget(task.id)
+
     def set_task_priority(self, task_id: int, priority: int) -> None:
         task = self._find_task(task_id)
         if task is None:
@@ -228,6 +241,7 @@ class PanelController(QObject):
         message = f'Delete "{section.title}" and its {section.total_count} task(s)?'
         if not confirm(self._dialog_parent(), "Delete Section", message):
             return
+        self._forget_timers_for(section.tasks)
         self.repo.delete_section(section_id)
         self.panel.reload()
 
@@ -273,10 +287,15 @@ class PanelController(QObject):
             f'Delete "{objective.title}" and all of its sections and tasks?',
         ):
             return
+        self._forget_timers_for(objective.tasks)
         self.repo.delete_objective(objective.id)
         self.panel.reload()
 
     def switch_objective(self, objective_id: int) -> None:
+        # Bank any running clock first: its row is about to leave the panel,
+        # and time that keeps accruing where you cannot see it is time you
+        # cannot trust.
+        self.timers.pause_all()
         self.repo.set_active_objective(objective_id)
         self.settings.set("active_objective_id", objective_id)
         self.panel.reload()
@@ -430,6 +449,7 @@ class PanelController(QObject):
     def _clear_completed(self) -> None:
         if self.panel.objective is None:
             return
+        self._forget_timers_for(t for t in self.panel.objective.tasks if t.done)
         removed = self.repo.clear_completed(self.panel.objective.id)
         if removed:
             self.panel.reload()

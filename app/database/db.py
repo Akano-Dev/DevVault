@@ -5,7 +5,7 @@ import sqlite3
 import threading
 from pathlib import Path
 
-from ..core.paths import database_path
+from ..core import paths
 
 SCHEMA_VERSION = 2
 
@@ -70,7 +70,11 @@ class Database:
     """
 
     def __init__(self, path: Path | None = None) -> None:
-        self.path = Path(path) if path else database_path()
+        # Resolved through the module, not a name imported at import time: the
+        # test harnesses redirect the app at a throwaway database by patching
+        # paths.database_path, and a bound name would ignore that and open the
+        # user's real data instead.
+        self.path = Path(path) if path else paths.database_path()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
         self._closed = False

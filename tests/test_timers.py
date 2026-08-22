@@ -451,3 +451,101 @@ def test_running_timer_survives_a_panel_reload(qapp, tmp_path: Path, clock):
     view.timers.shutdown()
     view.deleteLater()
     db.close()
+
+
+# ----------------------------------------------------------------------
+# Deleting the rows out from under a running clock
+# ----------------------------------------------------------------------
+def _controller_panel(tmp_path: Path, monkeypatch):
+    """A panel wired to a controller, with every confirm dialog auto-accepted."""
+    from app.ui import panel_controller as pc
+
+    monkeypatch.setattr(pc, "confirm", lambda *a, **k: True)
+
+    db = Database(tmp_path / "delete.db")
+    repo = Repo(db)
+    settings = SettingsStore(db)
+    obj = repo.create_objective("Weekly Challenge")
+    sec = repo.create_section(obj, "Target")
+    task_id = repo.create_task(
+        sec, "Coding (Learning)", timer_enabled=True, timer_target=21 * 3600
+    )
+    view = QuestPanelView(repo, settings)
+    view.resize(380, 220)
+    view.reload()
+    controller = pc.PanelController(view, repo, settings, parent=view)
+    return db, repo, view, controller, obj, sec, task_id
+
+
+def test_deleting_a_section_stops_the_clock_inside_it(qapp, tmp_path, monkeypatch, clock):
+    db, repo, view, controller, _obj, sec, task_id = _controller_panel(tmp_path, monkeypatch)
+
+    view.timers.start(task_id, 0, 21 * 3600)
+    clock["now"] += 30
+    controller.delete_section(sec)
+
+    # The row is gone, so the clock must be gone with it -- otherwise it keeps
+    # ticking invisibly and the next flush writes to a deleted row.
+    assert view.timers.running_ids() == []
+    assert view.timers.is_running(task_id) is False
+
+    view.timers.shutdown()
+    view.deleteLater()
+    db.close()
+
+
+def test_deleting_an_objective_stops_every_clock_under_it(qapp, tmp_path, monkeypatch, clock):
+    db, repo, view, controller, obj, _sec, task_id = _controller_panel(tmp_path, monkeypatch)
+
+    view.timers.start(task_id, 0, 21 * 3600)
+    clock["now"] += 30
+    controller.delete_objective()
+
+    assert view.timers.running_ids() == []
+    assert repo.get_objective(obj) is None
+
+    view.timers.shutdown()
+    view.deleteLater()
+    db.close()
+
+
+def test_clearing_completed_stops_the_clocks_it_deletes(qapp, tmp_path, monkeypatch, clock):
+    db, repo, view, controller, obj, sec, task_id = _controller_panel(tmp_path, monkeypatch)
+    keeper = repo.create_task(sec, "GATE Studies", timer_enabled=True, timer_target=42 * 3600)
+    view.reload()
+
+    # A done task whose clock is somehow still running is exactly the case
+    # that used to leak, so drive it straight into that state.
+    repo.set_task_done(task_id, True)
+    view.reload()
+    view.timers.start(task_id, 0, 21 * 3600)
+    clock["now"] += 30
+
+    controller._clear_completed()
+
+    assert view.timers.is_running(task_id) is False
+    # The surviving task's own clock is untouched.
+    view.timers.start(keeper, 0, 42 * 3600)
+    assert view.timers.is_running(keeper) is True
+
+    view.timers.shutdown()
+    view.deleteLater()
+    db.close()
+
+
+def test_switching_objective_banks_the_running_clock(qapp, tmp_path, monkeypatch, clock):
+    db, repo, view, controller, _obj, _sec, task_id = _controller_panel(tmp_path, monkeypatch)
+    other = repo.create_objective("Next Week")
+    repo.create_section(other, "Target")
+
+    view.timers.start(task_id, 0, 21 * 3600)
+    clock["now"] += 300
+    controller.switch_objective(other)
+
+    # Time already worked is kept; the clock does not run on where you cannot see it.
+    assert view.timers.running_ids() == []
+    assert repo.task_elapsed(task_id) == 300
+
+    view.timers.shutdown()
+    view.deleteLater()
+    db.close()

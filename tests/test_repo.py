@@ -182,3 +182,25 @@ def test_settings_roundtrip_types_and_persistence(tmp_path: Path):
     assert reloaded.int("win_x") == 421
     assert reloaded.str("hotkey") == "Ctrl+Alt+P"
     db2.close()
+
+
+def test_database_path_is_resolved_through_the_paths_module(tmp_path: Path, monkeypatch):
+    """The app must honour a redirected database_path.
+
+    db.py used to do ``from ..core.paths import database_path``, binding the
+    name at import. Patching ``paths.database_path`` -- which is how every
+    harness points the app at a scratch database -- then had no effect, and
+    booting the app under test opened the user's real to-do list and wrote to
+    it. Resolving through the module is what makes the redirect stick.
+    """
+    from app.core import paths
+
+    target = tmp_path / "redirected.db"
+    monkeypatch.setattr(paths, "database_path", lambda: target)
+
+    db = Database()
+    try:
+        assert db.path == target
+    finally:
+        db.close()
+    assert target.exists()
