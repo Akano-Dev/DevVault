@@ -1,38 +1,34 @@
-"""Native OS notifications for the events worth interrupting you for.
+"""Desktop notifications, drawn by QuestPanel in its own pixel language.
 
-Modelled on the reference pomodoro app's system (Refference/pomodoro-main),
-which is built on four rules:
+The policy follows the reference pomodoro app (Refference/pomodoro-main):
+prefer a real desktop notification over an in-panel banner, keep the whole
+channel behind one setting, make clicking one bring the app back, and treat
+every notification as best-effort -- the thing it announces has already
+happened and matters more than the announcement.
 
-* prefer the platform's own notification -- it survives the app being hidden,
-  minimised or behind a fullscreen window, which an in-app banner does not;
-* keep the whole channel behind one user setting, defaulting on;
-* clicking the notification brings the app back to the front;
-* a notification is best-effort. It must never raise into the caller, because
-  the thing it is announcing (a finished timer, a completed objective) has
-  already happened and matters more than the announcement.
+Where that app hands the toast to Electron (and so to Windows), this one
+paints its own: a Windows 11 toast is a rounded system-font card branded with
+the host process's name, which for a dev run reads "Python". The pixel toast
+in widgets/toast.py belongs to the app instead, appears in the top-right
+corner, and comes with its own chiptune.
 
-Where that app calls Electron's ``Notification`` and falls back to the HTML5
-API, this one calls the tray icon -- which is what Qt maps onto a real Windows
-toast -- and reports failure to the caller instead.
-
-One difference worth knowing: Electron lets the caller ask for a *silent*
-toast, so the app's own chime is the only sound. Qt exposes no such flag, so
-with both Sounds and Notifications enabled a finished timer makes two noises:
-QuestPanel's chiptune and the system's default toast sound. Turning off either
-setting resolves it.
+The native tray balloon stays as a fallback for the case where no screen is
+available to park a window on.
 """
 from __future__ import annotations
 
 from PySide6.QtCore import QObject, Signal
 
 from ..utils.duration import format_compact
+from ..widgets.toast import ToastStack
 from .settings import SettingsStore
 
 
 class NotificationService(QObject):
-    """Policy layer over the tray icon's message support."""
+    """Policy layer over the pixel toast stack."""
 
-    activated = Signal()      # the user clicked a notification
+    activated = Signal()             # the user clicked a notification
+    sound_requested = Signal(str)    # sfx key, played by the audio service
 
     def __init__(
         self,
@@ -43,23 +39,31 @@ class NotificationService(QObject):
         super().__init__(parent)
         self.tray = tray
         self.settings = settings
-        try:
-            tray.message_clicked.connect(self.activated.emit)
-        except AttributeError:
-            pass          # a stand-in tray in the tests; clicking is optional
+        self.stack = ToastStack()
 
     @property
     def enabled(self) -> bool:
         return self.settings.bool("notifications_enabled")
 
     # ------------------------------------------------------------------
-    def notify(self, title: str, body: str) -> bool:
-        """Show one notification. Returns whether it actually went out."""
+    def notify(
+        self,
+        title: str,
+        body: str,
+        icon: str = "quest",
+        silent: bool = False,
+    ) -> bool:
+        """Show one notification. Returns whether it actually went out.
+
+        ``silent`` is for events that already made their own noise -- a
+        finished timer plays its alarm, and stacking the notification chime on
+        top of it just makes the same event sound twice.
+        """
         if not self.enabled:
             return False
-        return self._send(title, body)
+        return self._send(title, body, icon, silent)
 
-    def warn(self, title: str, body: str) -> bool:
+    def warn(self, title: str, body: str, icon: str = "gear") -> bool:
         """Show a notification that ignores the setting.
 
         Reserved for the app reporting that it could not do something the user
@@ -67,9 +71,21 @@ class NotificationService(QObject):
         because notifications are off would leave the app looking broken with
         no explanation anywhere.
         """
-        return self._send(title, body)
+        return self._send(title, body, icon, silent=False)
 
-    def _send(self, title: str, body: str) -> bool:
+    def _send(self, title: str, body: str, icon: str, silent: bool) -> bool:
+        try:
+            toast = self.stack.show(
+                title, body, icon, on_activated=self.activated.emit
+            )
+        except Exception:
+            toast = None
+        if toast is not None:
+            if not silent:
+                self.sound_requested.emit("notify")
+            return True
+        # No screen to park a window on: fall back to the tray balloon rather
+        # than dropping the news entirely.
         try:
             return bool(self.tray.notify(title, body))
         except Exception:
@@ -82,11 +98,20 @@ class NotificationService(QObject):
     # ------------------------------------------------------------------
     def timer_target_reached(self, task_text: str, target_seconds: int) -> bool:
         goal = format_compact(target_seconds) if target_seconds else ""
-        body = f"You've put {goal} into it." if goal else "Time tracked."
-        return self.notify(f"{task_text} - time's up!", body)
+        # The task name goes in the body, not the title: the body gets two
+        # lines, and a long task name in the title elides after a word or two.
+        body = f"{task_text} - {goal} reached." if goal else f"{task_text} - time tracked."
+        # Silent: the timer already sounded its own alarm.
+        return self.notify("Time's up!", body, "clock", silent=True)
 
     def objective_complete(self, title: str) -> bool:
         return self.notify(
             "Objective complete!",
             f'"{title}" is fully checked off.' if title else "Every task is done.",
+            "star",
+            silent=True,          # the completion fanfare covers this one
         )
+
+    def clear(self) -> None:
+        """Drop every toast on screen -- used on shutdown."""
+        self.stack.clear()

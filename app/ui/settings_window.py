@@ -287,8 +287,9 @@ class SettingsWindow(QWidget):
         self._checkbox("Desktop Notifications", "notifications_enabled")
 
         note = QLabel(
-            "Toasts when a task timer hits its target and when an objective is "
-            "fully checked off. Clicking one brings the panel back."
+            "Pixel toasts in the top-right corner when a task timer hits its "
+            "target and when an objective is fully checked off. Click one to "
+            "bring the panel back, or hover to hold it open."
         )
         note.setWordWrap(True)
         note.setFont(font(M.SECTION_SIZE))
@@ -352,7 +353,7 @@ class SettingsWindow(QWidget):
 
         note = QLabel(
             "Put .mp3/.ogg/.wav files in the music folder. Effects go one level "
-            "up as task_complete.wav, objective_complete.wav, ui_click.wav "
+            "up as task_complete.wav, objective_complete.wav, notify.wav, ui_click.wav "
             "(effects must be .wav). Nothing ships with QuestPanel."
         )
         note.setWordWrap(True)

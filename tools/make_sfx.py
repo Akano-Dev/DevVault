@@ -226,6 +226,21 @@ def timer_done() -> list[float]:
     return sequence(parts)
 
 
+def notify() -> list[float]:
+    """A toast sliding in: soft rising two-note pop with a triangle tail.
+
+    Deliberately lighter than timer_done. A notification announces the news;
+    it is not the news itself, and it may arrive while the user is mid-sentence
+    in something else.
+    """
+    return sequence([
+        (0.000, tone(NOTES["D5"], 0.048, duty=0.25, volume=0.46)),
+        (0.042, tone(NOTES["A5"], 0.072, duty=0.125, volume=0.58)),
+        (0.042, tone(NOTES["D5"], 0.135, shape="triangle", volume=0.28)),
+        (0.110, tone(NOTES["D6"], 0.055, duty=0.125, volume=0.30)),
+    ])
+
+
 EFFECTS = {
     "task_complete.wav": task_complete,
     "task_uncomplete.wav": task_uncomplete,
@@ -236,6 +251,7 @@ EFFECTS = {
     "timer_start.wav": timer_start,
     "timer_pause.wav": timer_pause,
     "timer_done.wav": timer_done,
+    "notify.wav": notify,
 }
 
 

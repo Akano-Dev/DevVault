@@ -83,6 +83,7 @@ class QuestPanelApp(QObject):
         self.notifications = NotificationService(self.tray, self.settings, self)
         # Clicking a toast brings the panel back, exactly as the reference does.
         self.notifications.activated.connect(self.raise_overlay)
+        self.notifications.sound_requested.connect(lambda key: self.audio.play(key))
 
         # A second launch raises this window instead of stacking another one.
         self.single_instance = single_instance
@@ -105,7 +106,7 @@ class QuestPanelApp(QObject):
             self.hotkey.register(sequence)
         except HotkeyError as exc:
             if announce:
-                self.notifications.warn("QuestPanel - hotkey unavailable", str(exc))
+                self.notifications.warn("Hotkey unavailable", str(exc))
             else:
                 print(f"[QuestPanel] hotkey: {exc}", file=sys.stderr)
             return False
@@ -166,7 +167,7 @@ class QuestPanelApp(QObject):
 
     def send_test_notification(self) -> None:
         shown = self.notifications.warn(
-            "QuestPanel", "Notifications are working. This is a test."
+            "Test notification", "Pixel toasts are working. This is a test."
         )
         if self.settings_window is not None:
             self.settings_window.report_notification_result(shown)
@@ -199,6 +200,7 @@ class QuestPanelApp(QObject):
         # Bank any running task clock while the database is still open.
         self.panel.timers.shutdown()
         self.hotkey.unregister()
+        self.notifications.clear()
         self.audio.shutdown()
         if self.settings_window is not None:
             self.settings_window.close()
