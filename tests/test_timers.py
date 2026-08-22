@@ -549,3 +549,29 @@ def test_switching_objective_banks_the_running_clock(qapp, tmp_path, monkeypatch
     view.timers.shutdown()
     view.deleteLater()
     db.close()
+
+
+def test_hitting_the_target_announces_the_task_and_its_goal(qapp, tmp_path, monkeypatch, clock):
+    """The controller hands the notification layer what it needs to word a toast."""
+    db, repo, view, controller, _obj, _sec, task_id = _controller_panel(tmp_path, monkeypatch)
+
+    announced: list[tuple[str, int]] = []
+    controller.timer_target_reached.connect(lambda text, target: announced.append((text, target)))
+
+    # A three-second goal, so one tick of the hand-cranked clock clears it.
+    repo.set_task_timer(task_id, True, 3)
+    view.reload()
+    view.timers.start(task_id, 0, 3)
+    clock["now"] += 5
+    view.timers._on_tick()
+
+    assert announced == [("Coding (Learning)", 3)]
+
+    # And it stays a one-shot: further ticks past the goal say nothing more.
+    clock["now"] += 5
+    view.timers._on_tick()
+    assert len(announced) == 1
+
+    view.timers.shutdown()
+    view.deleteLater()
+    db.close()

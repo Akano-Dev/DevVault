@@ -13,6 +13,7 @@ from .core.single_instance import SingleInstance
 from .database.db import Database
 from .database.repo import Repo
 from .services.audio import AudioService
+from .services.notifications import NotificationService
 from .services.settings import SettingsStore
 from .ui.overlay import OverlayWindow
 from .ui.panel_controller import PanelController
@@ -56,6 +57,11 @@ class QuestPanelApp(QObject):
         # Bound through a lambda, not self.audio.play: the audio service does
         # not exist yet at this point in construction.
         self.panel_controller.sound_requested.connect(lambda key: self.audio.play(key))
+        # Bound through a lambda for the same reason: the notification service
+        # is constructed with the tray, further down.
+        self.panel_controller.timer_target_reached.connect(
+            lambda text, target: self.notifications.timer_target_reached(text, target)
+        )
         self.panel.reload()
         self.overlay.apply_effects()
 
@@ -72,6 +78,11 @@ class QuestPanelApp(QObject):
         self.tray.always_on_top_toggled.connect(self.set_always_on_top)
         self.tray.exit_requested.connect(self.quit)
         self.overlay.visibility_changed.connect(self.tray.set_visible_state)
+
+        # Notifications ----------------------------------------------------
+        self.notifications = NotificationService(self.tray, self.settings, self)
+        # Clicking a toast brings the panel back, exactly as the reference does.
+        self.notifications.activated.connect(self.raise_overlay)
 
         # A second launch raises this window instead of stacking another one.
         self.single_instance = single_instance
@@ -94,7 +105,7 @@ class QuestPanelApp(QObject):
             self.hotkey.register(sequence)
         except HotkeyError as exc:
             if announce:
-                self.tray.notify("QuestPanel - hotkey unavailable", str(exc))
+                self.notifications.warn("QuestPanel - hotkey unavailable", str(exc))
             else:
                 print(f"[QuestPanel] hotkey: {exc}", file=sys.stderr)
             return False
@@ -122,6 +133,8 @@ class QuestPanelApp(QObject):
     def on_objective_completed(self, objective_id: int) -> None:
         self.audio.play("objective_complete")
         self.panel.celebrate()
+        title = self.panel.objective.title if self.panel.objective else ""
+        self.notifications.objective_complete(title)
 
     # ------------------------------------------------------------------
     def open_settings(self) -> None:
@@ -131,6 +144,7 @@ class QuestPanelApp(QObject):
             window.audio_changed.connect(self.audio.apply_settings)
             window.always_on_top_changed.connect(self.set_always_on_top)
             window.hotkey_changed.connect(self.on_hotkey_changed)
+            window.test_notification_requested.connect(self.send_test_notification)
             window.closed.connect(self._on_settings_closed)
             self.settings_window = window
         # Pick up any files dropped into the music folder since it was last open.
@@ -149,6 +163,13 @@ class QuestPanelApp(QObject):
             )
         if not ok:
             self.register_hotkey(previous, announce=False)
+
+    def send_test_notification(self) -> None:
+        shown = self.notifications.warn(
+            "QuestPanel", "Notifications are working. This is a test."
+        )
+        if self.settings_window is not None:
+            self.settings_window.report_notification_result(shown)
 
     def apply_appearance(self) -> None:
         theme.set_scale(self.settings.float("ui_scale"))

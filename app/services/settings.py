@@ -13,6 +13,8 @@ DEFAULTS: dict[str, Any] = {
     "remember_size": True,
     "hotkey": "Ctrl+Shift+Q",
     "hide_to_tray": True,
+    # Desktop toasts for finished timers and completed objectives.
+    "notifications_enabled": True,
     # Appearance
     "ui_scale": 1.0,
     "opacity": 0.96,

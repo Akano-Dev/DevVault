@@ -29,6 +29,7 @@ class PanelController(QObject):
     objective_completed = Signal(int)
     ui_interaction = Signal()          # for the optional UI click sound
     sound_requested = Signal(str)      # sfx key, played by the audio service
+    timer_target_reached = Signal(str, int)   # task text, target seconds
 
     def __init__(
         self,
@@ -143,6 +144,12 @@ class PanelController(QObject):
 
     def _on_target_reached(self, task_id: int) -> None:
         self.sound_requested.emit("timer_done")
+        # The panel is often hidden or behind something when a long timer
+        # finishes -- which is exactly when the desktop toast is the only way
+        # the news reaches you.
+        task = self._find_task(task_id)
+        if task is not None:
+            self.timer_target_reached.emit(task.text, task.timer_target)
 
     def edit_task(self, task_id: int) -> None:
         task = self._find_task(task_id)

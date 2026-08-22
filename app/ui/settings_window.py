@@ -81,6 +81,7 @@ class SettingsWindow(QWidget):
     audio_changed = Signal()
     always_on_top_changed = Signal(bool)
     hotkey_changed = Signal(str)
+    test_notification_requested = Signal()
     closed = Signal()
 
     def __init__(self, settings: SettingsStore, parent: QWidget | None = None) -> None:
@@ -131,6 +132,7 @@ class SettingsWindow(QWidget):
 
         self._build_general()
         self._build_appearance()
+        self._build_notifications()
         self._build_audio()
         self.body_layout.addStretch(1)
 
@@ -279,6 +281,45 @@ class SettingsWindow(QWidget):
                        lambda _: self.appearance_changed.emit())
         self._checkbox("Animations", "animations_enabled",
                        lambda _: self.appearance_changed.emit())
+
+    def _build_notifications(self) -> None:
+        self._heading("Notifications")
+        self._checkbox("Desktop Notifications", "notifications_enabled")
+
+        note = QLabel(
+            "Toasts when a task timer hits its target and when an objective is "
+            "fully checked off. Clicking one brings the panel back."
+        )
+        note.setWordWrap(True)
+        note.setFont(font(M.SECTION_SIZE))
+        note.setStyleSheet(f"color: {C.MUTED.name()}; background: transparent;")
+        self.body_layout.addWidget(note)
+
+        # Windows can suppress toasts per-app and during Focus Assist, with no
+        # error of any kind reaching us -- so give the user a way to find that
+        # out here rather than by missing a finished timer.
+        test = PixelButton("Send a Test Notification")
+        test.setFont(font(M.TASK_SIZE))
+        test.clicked.connect(self.test_notification_requested.emit)
+        self.body_layout.addWidget(test)
+
+        self.notification_status = QLabel("")
+        self.notification_status.setWordWrap(True)
+        self.notification_status.setFont(label_font(M.SECTION_SIZE))
+        self.notification_status.setStyleSheet(
+            f"color: {C.MUTED.name()}; background: transparent;"
+        )
+        self.body_layout.addWidget(self.notification_status)
+
+    def report_notification_result(self, shown: bool) -> None:
+        self.notification_status.setText(
+            "Sent - if nothing appeared, check Windows notification settings."
+            if shown
+            else "This system reports it cannot show notifications."
+        )
+        self.notification_status.setStyleSheet(
+            f"color: {(C.GREEN if shown else C.RED).name()}; background: transparent;"
+        )
 
     def _build_audio(self) -> None:
         self._heading("Audio")

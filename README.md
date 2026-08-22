@@ -49,8 +49,15 @@ fully offline.
 - Only one clock runs at a time, so a stretch of work is never counted twice
 - Time is banked to SQLite as it accrues, and ticking a task off stops its clock
 
+**Desktop notifications** — a native Windows toast when a task timer reaches its
+target and when an objective is fully checked off. Clicking one brings the panel
+back to the front. The whole channel sits behind a single setting (on by default),
+and **Settings → Notifications** has a test button, because Windows can suppress
+toasts per-app or during Focus Assist without telling the app anything.
+
 **Settings** — startup with Windows, always-on-top, remember position/size, hotkey
-capture, UI scale, opacity, icons, progress, compact mode, and the full audio mixer.
+capture, UI scale, opacity, icons, progress, compact mode, notifications, and the
+full audio mixer.
 
 ---
 

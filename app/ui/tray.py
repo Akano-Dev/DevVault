@@ -13,6 +13,7 @@ class TrayController(QObject):
     settings_requested = Signal()
     always_on_top_toggled = Signal(bool)
     exit_requested = Signal()
+    message_clicked = Signal()       # a notification toast was clicked
 
     def __init__(self, always_on_top: bool, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -45,6 +46,7 @@ class TrayController(QObject):
         self._menu = menu
         self.icon.setContextMenu(menu)
         self.icon.activated.connect(self._on_activated)
+        self.icon.messageClicked.connect(self.message_clicked.emit)
         self.icon.show()
 
     def _on_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
@@ -62,6 +64,14 @@ class TrayController(QObject):
         self.action_on_top.setChecked(enabled)
         self.action_on_top.blockSignals(False)
 
-    def notify(self, title: str, message: str) -> None:
-        if QSystemTrayIcon.supportsMessages():
-            self.icon.showMessage(title, message, app_icon(), 3000)
+    def notify(self, title: str, message: str) -> bool:
+        """Show a tray message. Returns False when the platform cannot.
+
+        Qt turns this into a real toast on Windows 10/11. The return value
+        lets the notification service tell "shown" from "not supported here"
+        rather than assuming it landed.
+        """
+        if not QSystemTrayIcon.supportsMessages() or not self.icon.isVisible():
+            return False
+        self.icon.showMessage(title, message, app_icon(), 5000)
+        return True

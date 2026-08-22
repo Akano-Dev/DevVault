@@ -22,3 +22,6 @@ build/pyi/
 build/*.png
 build/*.ico
 *.spec.bak
+
+# Local reference copies of other projects (not part of QuestPanel)
+Refference/
